@@ -17,7 +17,10 @@ from common import amdahl_fit, karp_flatt, load, median_runs, serial_baseline, s
 
 
 def md_table(header, rows):
-    lines = ["| " + " | ".join(header) + " |", "|" + "|".join("---" for _ in header) + "|"]
+    # pandoc sizes the columns of a wide pipe table by the dashes of the separator line, so make
+    # them proportional to each column's longest entry (otherwise every column gets equal width)
+    widths = [max([len(str(h))] + [len(str(r[c])) for r in rows]) for c, h in enumerate(header)]
+    lines = ["| " + " | ".join(header) + " |", "|" + "|".join("-" * max(3, w) for w in widths) + "|"]
     lines += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
     return "\n".join(lines) + "\n"
 
@@ -204,6 +207,58 @@ def report_strong_baselines(med, machine):
     return ("**Serial baselines and Amdahl fits.** " + "; ".join(parts) + ".") if parts else ""
 
 
+def report_commshare(med, machine):
+    """Share of each strong-scaling iteration spent in the halo exchange and in the Allreduces
+    (phase times averaged over ranks, so the Allreduce share includes waiting for slower ranks)."""
+    series = strong_series(med, machine)
+    if not series:
+        return ""
+    keys = sorted({(int(r.p), int(r.nodes)) for _, _, g in series.values() for r in g.itertuples()})
+    rows = []
+    for p, nodes in keys:
+        row = [p, nodes]
+        for _, _, g in series.values():
+            m = g[(g.p == p) & (g.nodes == nodes)]
+            if len(m):
+                r = m.iloc[0]
+                row.append(f"{100 * r.halo_per_iter / r.t_iter:.1f} / {100 * r.reduce_per_iter / r.t_iter:.1f}")
+            else:
+                row.append("")
+        rows.append(row)
+    return md_table(["p", "nodes"] + list(series), rows)
+
+
+def report_gpuweak(med, machine):
+    """GPU weak scaling: one GPU's share of the grid fixed, 1 -> 2 GPUs in one node or two."""
+    g = med[(med.machine == machine) & (med.tag == "gpu-weak")]
+    if g.empty:
+        return ""
+    g = g.assign(local=(g.nx // g.px).astype(int))
+    groups = {}
+    for (dim, local), grp in sorted(g.groupby(["dim", "local"])):
+        one = grp[(grp.gpus == 1) & (grp.halo == "aware")]
+        if len(one):
+            groups[(int(dim), int(local))] = (float(one.t_iter.iloc[0]), grp)
+    configs = [(1, 1, "aware"), (2, 1, "aware"), (2, 1, "staged"), (2, 2, "aware"), (2, 2, "staged")]
+    rows = []
+    for gpus, nodes, halo in configs:
+        where = "" if gpus == 1 else (" in 1 node" if nodes == 1 else " on 2 nodes")
+        name = f"{gpus} A40{where}" + ("" if gpus == 1 else f", {'CUDA-aware' if halo == 'aware' else 'host-staged'}")
+        row = [name]
+        for t1, grp in groups.values():
+            m = grp[(grp.gpus == gpus) & (grp.nodes == nodes) & (grp.halo == halo)]
+            if len(m):
+                t = float(m.t_iter.iloc[0])
+                row += [f"{t * 1e3:.1f}", f"{t1 / t:.2f}", f"{m.halo_per_iter.iloc[0] * 1e3:.2f}"]
+            else:
+                row += ["", "", ""]
+        rows.append(row)
+    head = ["configuration"]
+    for dim, local in groups:
+        head += [f"{dim}D: ms", f"{dim}D: E_w", f"{dim}D: halo ms"]
+    return md_table(head, rows)
+
+
 def report_weak(med, machine):
     w = med[(med.machine == machine) & (med.tag == "weak") & (med.threads == 1)]
     if w.empty:
@@ -227,7 +282,7 @@ def report_weak(med, machine):
         rows.append(row)
     head = ["p", "nodes"]
     for label in groups:
-        head += [f"{label}: ms", "E_w", "scaled S"]
+        head += [f"{label.split(',')[0]}: ms", f"{label.split(',')[0]}: E_w", f"{label.split(',')[0]}: scaled S"]
     return md_table(head, rows)
 
 
@@ -320,6 +375,8 @@ def write_report_tables(med, machine, outdir):
     files[f"report_karpflatt_{machine}.md"] = kf
     files[f"report_strong_baselines_{machine}.md"] = report_strong_baselines(med, machine) + "\n"
     files[f"report_weak_{machine}.md"] = report_weak(med, machine)
+    files[f"report_commshare_{machine}.md"] = report_commshare(med, machine)
+    files[f"report_gpuweak_{machine}.md"] = report_gpuweak(med, machine)
     for (p, dim, nx, nodes), table in report_comm(med, machine).items():
         files[f"report_comm_{machine}_{dim}d_p{p}.md"] = table
     files[f"report_gpu_{machine}.md"] = report_gpu(med, machine)

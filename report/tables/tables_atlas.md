@@ -3,7 +3,7 @@
 **Serial scaling (E1), atlas**
 
 | dim | N | n | nnz | ms / iteration | GB/s (model) | iterations to 1e-8 | time to 1e-8 [s] |
-|---|---|---|---|---|---|---|---|
+|---|-----|-----------|-------------|--------------|------------|------------------|----------------|
 | 2D | 128 | 16,384 | 81,408 | 0.020 | 85.3 | 383 | 0.008 |
 | 2D | 256 | 65,536 | 326,656 | 0.086 | 78.9 | 771 | 0.068 |
 | 2D | 512 | 262,144 | 1,308,672 | 0.344 | 79.2 | 1560 | 0.539 |
@@ -22,7 +22,7 @@
 **Strong scaling, 2D 8192x8192, atlas** (T1 = 207.426 ms/iteration, serial; Amdahl fit: serial fraction f = 0.108, so S(∞) = 9)
 
 | p | nodes | ranks | ms / iteration | speedup | efficiency | Karp–Flatt e | halo ms | Allreduce ms |
-|---|---|---|---|---|---|---|---|---|
+|---|-----|------|--------------|-------|----------|------------|-------|------------|
 | 1 | 1 | 1x1x1 | 175.831 | 1.18 | 1.18 | – | 0.002 | 0.005 |
 | 2 | 1 | 2x1x1 | 110.639 | 1.87 | 0.94 | 0.067 | 2.298 | 9.307 |
 | 4 | 1 | 2x2x1 | 50.457 | 4.11 | 1.03 | -0.009 | 0.940 | 4.582 |
@@ -35,7 +35,7 @@
 **Strong scaling, 2D 16384x16384, atlas** (T1 = 843.002 ms/iteration, serial; Amdahl fit: serial fraction f = 0.115, so S(∞) = 9)
 
 | p | nodes | ranks | ms / iteration | speedup | efficiency | Karp–Flatt e | halo ms | Allreduce ms |
-|---|---|---|---|---|---|---|---|---|
+|---|-----|------|--------------|-------|----------|------------|-------|------------|
 | 1 | 1 | 1x1x1 | 762.757 | 1.11 | 1.11 | – | 0.002 | 0.008 |
 | 2 | 1 | 2x1x1 | 438.339 | 1.92 | 0.96 | 0.040 | 8.124 | 31.757 |
 | 4 | 1 | 2x2x1 | 220.204 | 3.83 | 0.96 | 0.015 | 4.206 | 28.735 |
@@ -48,7 +48,7 @@
 **Strong scaling, 3D 256x256x256, atlas** (T1 = 53.286 ms/iteration, serial; Amdahl fit: serial fraction f = 0.065, so S(∞) = 15)
 
 | p | nodes | ranks | ms / iteration | speedup | efficiency | Karp–Flatt e | halo ms | Allreduce ms |
-|---|---|---|---|---|---|---|---|---|
+|---|-----|-----|--------------|-------|----------|------------|-------|------------|
 | 1 | 1 | 1x1x1 | 47.970 | 1.11 | 1.11 | – | 0.001 | 0.004 |
 | 2 | 1 | 2x1x1 | 27.381 | 1.95 | 0.97 | 0.028 | 0.349 | 2.107 |
 | 4 | 1 | 2x2x1 | 10.878 | 4.90 | 1.22 | -0.061 | 0.283 | 0.179 |
@@ -61,7 +61,7 @@
 **Strong scaling, 3D 512x512x512, atlas** (T1 = 450.711 ms/iteration, serial; Amdahl fit: serial fraction f = 0.114, so S(∞) = 9)
 
 | p | nodes | ranks | ms / iteration | speedup | efficiency | Karp–Flatt e | halo ms | Allreduce ms |
-|---|---|---|---|---|---|---|---|---|
+|---|-----|-----|--------------|-------|----------|------------|-------|------------|
 | 1 | 1 | 1x1x1 | 371.471 | 1.21 | 1.21 | – | 0.002 | 0.006 |
 | 2 | 1 | 2x1x1 | 235.648 | 1.91 | 0.96 | 0.046 | 4.892 | 20.435 |
 | 4 | 1 | 2x2x1 | 119.072 | 3.79 | 0.95 | 0.019 | 3.229 | 16.390 |
@@ -74,7 +74,7 @@
 **Weak scaling, 2048^2 unknowns per rank, atlas**
 
 | p | nodes | global grid | ms / iteration | weak efficiency | scaled speedup (Gustafson) | implied serial fraction |
-|---|---|---|---|---|---|---|
+|---|-----|--------------|--------------|---------------|--------------------------|-----------------------|
 | 1 | 1 | 2D 2048x2048 | 9.586 | 1.00 | 1.0 | – |
 | 2 | 1 | 2D 4096x2048 | 9.732 | 0.98 | 2.0 | 0.030 |
 | 4 | 1 | 2D 4096x4096 | 9.802 | 0.98 | 3.9 | 0.029 |
@@ -87,7 +87,7 @@
 **Weak scaling, 128^3 unknowns per rank, atlas**
 
 | p | nodes | global grid | ms / iteration | weak efficiency | scaled speedup (Gustafson) | implied serial fraction |
-|---|---|---|---|---|---|---|
+|---|-----|--------------|--------------|---------------|--------------------------|-----------------------|
 | 1 | 1 | 3D 128x128x128 | 4.821 | 1.00 | 1.0 | – |
 | 2 | 1 | 3D 256x128x128 | 4.923 | 0.98 | 2.0 | 0.042 |
 | 4 | 1 | 3D 256x256x128 | 5.129 | 0.94 | 3.8 | 0.080 |
@@ -100,14 +100,14 @@
 **Communication variants, 2D 16384x16384, p = 64, atlas**
 
 | decomposition | halo | CG | dot products | ms / iteration | compute ms | halo ms | Allreduce ms |
-|---|---|---|---|---|---|---|---|
+|-------------|-----------|--------|------------|--------------|----------|-------|------------|
 | block | nonblocking | standard | fast | 120.181 | 114.879 | 0.957 | 4.281 |
 | slab | nonblocking | standard | fast | 121.363 | 115.279 | 1.071 | 4.961 |
 
 **Communication variants, 3D 512x512x512, p = 64, atlas**
 
 | decomposition | halo | CG | dot products | ms / iteration | compute ms | halo ms | Allreduce ms |
-|---|---|---|---|---|---|---|---|
+|-------------|-----------|--------|------------|--------------|----------|-------|------------|
 | pencil | nonblocking | fused | fast | 62.591 | 58.068 | 2.745 | 1.813 |
 | block | nonblocking | fused | fast | 63.067 | 58.161 | 2.948 | 1.954 |
 | pencil | nonblocking | standard | fast | 63.458 | 58.807 | 2.086 | 2.487 |

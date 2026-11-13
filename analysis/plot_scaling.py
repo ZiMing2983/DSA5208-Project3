@@ -27,9 +27,22 @@ import numpy as np  # noqa: E402
 from matplotlib.ticker import FuncFormatter, MaxNLocator, NullFormatter  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import amdahl_fit, load, median_runs, serial_baseline, size_label  # noqa: E402
+from common import amdahl_fit, load, median_runs, serial_baseline  # noqa: E402
 
 A40_PEAK_GBS = 696.0
+
+
+def mname(machine):
+    """Machine name as written in the report (vanda -> Vanda)."""
+    return machine.capitalize()
+
+
+def fig_label(row):
+    """Problem label for figures: 2D $8192^2$, 3D $512^3$ (2D 4096×2048 when the sides differ)."""
+    d, nx, ny, nz = int(row["dim"]), int(row["nx"]), int(row["ny"]), int(row["nz"])
+    if d == 2:
+        return f"2D ${nx}^2$" if nx == ny else f"2D {nx}×{ny}"
+    return f"3D ${nx}^3$" if nx == ny == nz else f"3D {nx}×{ny}×{nz}"
 
 
 def plain_ticks(ax, xticks=None):
@@ -115,9 +128,9 @@ def plot_e1(med, machine, out):
         ref = fixed.sort_values("n").iloc[-1]
         ax[0].loglog(n, ref.t_iter * n / ref.n, "k--", lw=1, label="slope 1 (linear in n)")
     ax[0].set(xlabel="unknowns n", ylabel="time per CG iteration [s]",
-              title=f"E1 serial time per iteration ({machine})")
+              title=f"E1 serial time per iteration ({mname(machine)})")
     ax[1].set(xlabel="grid points per dimension N", ylabel="CG iterations to tol 1e-8",
-              title="E1 iterations (O(N), kappa ~ N^2)")
+              title=r"E1 CG iterations ($\kappa \propto N^2$, so iterations $\propto N$)")
     ax[2].set(xlabel="unknowns n", ylabel="time to solution [s]", title="E1 time to solution")
     for a in ax:
         a.grid(True, which="both", alpha=0.3)
@@ -142,11 +155,11 @@ def plot_strong(med, machine, out):
             if p1.empty:
                 continue
             t1, base = float(p1.t_iter.iloc[0]), "MPI p=1"
-        label = size_label(grp.iloc[0])
+        label = fig_label(grp.iloc[0])
         sp = t1 / grp.t_iter
         line, = ax[0].loglog(grp.p, grp.t_iter, "o-", label=label)
         ax[0].loglog(grp.p, t1 / grp.p, "--", color=line.get_color(), lw=0.8)
-        ax[1].loglog(grp.p, sp, "o-", color=line.get_color(), label=f"{label} (T1: {base})")
+        ax[1].loglog(grp.p, sp, "o-", color=line.get_color(), label=f"{label} ($T_1$: {base})")
         f = amdahl_fit(grp.p, sp)
         if f == f and f > 0:  # Amdahl's law with the fitted serial fraction (Lecture 7)
             pp = np.geomspace(1, grp.p.max(), 50)
@@ -157,9 +170,9 @@ def plot_strong(med, machine, out):
     ax[1].loglog([1, pmax], [1, pmax], "k--", lw=1, label="ideal")
     ax[2].axhline(1.0, color="k", ls="--", lw=1)
     ax[0].set(xlabel="MPI ranks p", ylabel="time per iteration [s]",
-              title=f"E3 strong scaling ({machine}); dashed: ideal T1/p")
-    ax[1].set(xlabel="MPI ranks p", ylabel="speedup T1 / Tp", title="speedup")
-    ax[2].set(xlabel="MPI ranks p", ylabel="parallel efficiency Sp / p", title="efficiency")
+              title=f"E3 strong scaling ({mname(machine)}); dashed: ideal $T_1/p$")
+    ax[1].set(xlabel="MPI ranks p", ylabel="speedup $T_1 / T_p$", title="speedup")
+    ax[2].set(xlabel="MPI ranks p", ylabel="parallel efficiency $S_p / p$", title="efficiency")
     mark_nodes(ax, s)
     for a in ax:
         a.grid(True, which="both", alpha=0.3)
@@ -180,18 +193,18 @@ def plot_weak(med, machine, out):
         if ref.empty:
             ref = grp.iloc[[0]]
         t1 = float(ref.t_iter.iloc[0])
-        label = f"{dim}D, {local}^{dim} per rank"
+        label = f"{dim}D, ${local}^{dim}$ per rank"
         line, = ax[0].loglog(grp.p, grp.t_iter * 1e3, "o-", label=label)
         ax[0].axhline(t1 * 1e3, color=line.get_color(), ls="--", lw=0.8)
         ax[1].semilogx(grp.p, t1 / grp.t_iter, "o-", color=line.get_color(), label=label)
         ax[2].loglog(grp.p, grp.p * t1 / grp.t_iter, "o-", color=line.get_color(), label=label)
     ax[1].axhline(1.0, color="k", ls="--", lw=1, label="ideal")
     ax[2].loglog([1, w.p.max()], [1, w.p.max()], "k--", lw=1, label="ideal (= p)")
-    ax[2].set(xlabel="MPI ranks p", ylabel="scaled speedup p T(1)/T(p)",
+    ax[2].set(xlabel="MPI ranks p", ylabel=r"scaled speedup $p\,T(1)/T(p)$",
               title="Gustafson scaled speedup")
     ax[0].set(xlabel="MPI ranks p", ylabel="time per iteration [ms]",
-              title=f"E4 weak scaling ({machine}); dashed: ideal (flat)")
-    ax[1].set(xlabel="MPI ranks p", ylabel="weak efficiency T(1)/T(p)", title="weak efficiency")
+              title=f"E4 weak scaling ({mname(machine)}); dashed: ideal (flat)")
+    ax[1].set(xlabel="MPI ranks p", ylabel="weak efficiency $T(1)/T(p)$", title="weak efficiency")
     mark_nodes(ax, w)
     for a in ax:
         a.grid(True, which="both", alpha=0.3)
@@ -220,8 +233,8 @@ def plot_comm(med, machine, out):
         ax.set_yticks(y, labels, fontsize=8)
         ax.set_ylim(-0.7, len(grp) - 0.3)
         ax.set(xlabel="time per iteration [ms] (phases averaged over ranks)",
-               title=f"E5 communication variants, {size_label(grp.iloc[0])}, p = {p} on "
-                     f"{nodes} node{'s' if nodes > 1 else ''} ({machine})")
+               title=f"E5 communication variants, {fig_label(grp.iloc[0])}, p = {p} on "
+                     f"{nodes} node{'s' if nodes > 1 else ''} ({mname(machine)})")
         ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
         ax.grid(True, axis="x", which="both", alpha=0.3)
         fig.legend(fontsize=8, ncol=4, loc="outside lower center")
@@ -237,12 +250,12 @@ def plot_hybrid(med, machine, out):
         grp = grp.sort_values("threads")
         ax.loglog(grp.threads, grp.t_iter * 1e3, "o-",
                   label=f"{cores} cores on {nodes} node{'s' if nodes > 1 else ''} "
-                        f"({size_label(grp.iloc[0])})")
+                        f"({fig_label(grp.iloc[0])})")
         for r in grp.itertuples():  # ranks per node x threads
             ax.annotate(f"{r.p // nodes}x{r.threads}", (r.threads, r.t_iter * 1e3), fontsize=7,
                         textcoords="offset points", xytext=(3, 4))
     ax.set(xlabel="OpenMP threads per rank (ranks per node x threads = cores per node)",
-           ylabel="time per iteration [ms]", title=f"E6 hybrid MPI+OpenMP ({machine})")
+           ylabel="time per iteration [ms]", title=f"E6 hybrid MPI+OpenMP ({mname(machine)})")
     lo, hi = ax.get_ylim()
     ax.set_ylim(lo / 1.15, hi * 1.15)
     ax.grid(True, which="both", alpha=0.3)
@@ -267,7 +280,7 @@ def plot_placement(med, machine, out):
         ax.axhline(best.t_iter * 1e3, color="k", ls="--", lw=1,
                    label=f"all {int(best.p)} cores (memory-bandwidth limit)")
     ax.set(xlabel="MPI ranks p on one node", ylabel="time per iteration [ms]",
-           title=f"Rank placement within one node, {size_label(pl.iloc[0])} ({machine})")
+           title=f"Rank placement within one node, {fig_label(pl.iloc[0])} ({mname(machine)})")
     plain_ticks(ax, pl.p.unique())
     ax.grid(True, which="both", alpha=0.3)
     ax.legend(title="mpirun --map-by", fontsize=8)
@@ -284,7 +297,7 @@ def plot_gpu(med, machine, out):
     names = []
     labelled = set()
     for i, ((dim, nx, ny, nz), grp) in enumerate(problems):
-        names.append(size_label(grp.iloc[0]))
+        names.append(fig_label(grp.iloc[0]))
         bars = []
         t1 = serial_baseline(med, machine, dim, nx, ny, nz)
         bars.append(("1 core (serial)", t1))
@@ -311,7 +324,7 @@ def plot_gpu(med, machine, out):
     lo, hi = ax[0].get_ylim()
     ax[0].set_ylim(lo, hi * 30)  # room for the legend above the bars
     ax[0].set_xticks(range(len(names)), names)
-    ax[0].set(ylabel="time per iteration [ms]", title=f"E7 CPU vs GPU ({machine})")
+    ax[0].set(ylabel="time per iteration [ms]", title=f"E7 CPU against GPU ({mname(machine)})")
     ax[0].legend(fontsize=8, ncol=3, loc="upper center")
     ax[0].grid(True, axis="y", which="both", alpha=0.3)
     one = g[(g.gpus == 1) & (g.nodes == 1) & (g.halo == "aware")].sort_values("n")
@@ -325,12 +338,74 @@ def plot_gpu(med, machine, out):
     save(fig, out, f"gpu_{machine}")
 
 
+def plot_decomposition(out):
+    """Schematic, no data: (a) a 2D grid on 2 x 2 ranks with one rank's ghost cells and the
+    5-point stencil next to a box face; (b)-(d) slab, pencil and block boxes on 8 ranks."""
+    from matplotlib.patches import Rectangle
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+    fig = plt.figure(figsize=(13, 4.2))
+    ax = fig.add_subplot(1, 4, 1)
+    n, h = 8, 4                                   # 8 x 8 interior points, 4 x 4 per rank
+    for i in range(n):
+        for j in range(n):
+            ax.plot(i, j, "o", ms=5, color="C0" if (i >= h and j >= h) else "0.6")
+    for i, j in [(h - 1, j) for j in range(h, n)] + [(i, h - 1) for i in range(h, n)]:
+        ax.add_patch(Rectangle((i - .4, j - .4), .8, .8, fill=False, hatch="////", ec="C1", lw=1))
+    for k in range(h, n):                         # physical boundary: the ghost value is 0
+        ax.plot(n, k, "s", ms=5, mfc="white", mec="0.3")
+        ax.plot(k, n, "s", ms=5, mfc="white", mec="0.3")
+    ax.plot([h - .5, h - .5], [-.5, n - .5], "k", lw=1.5)
+    ax.plot([-.5, n - .5], [h - .5, h - .5], "k", lw=1.5)
+    ax.add_patch(Rectangle((-.5, -.5), n, n, fill=False, ec="k", lw=1.5))
+    si, sj = h, h + 2                             # the 5-point stencil next to the box's left face
+    for di, dj in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+        ax.plot([si, si + di], [sj, sj + dj], color="C3", lw=2)
+    ax.plot(si, sj, "o", ms=8, color="C3")
+    for (x, y), r in zip(((1.5, 1.5), (5.5, 1.5), (1.5, 5.5), (5.5, 5.5)), (0, 2, 1, 3)):
+        ax.text(x, y, f"rank {r}", ha="center", va="center", fontsize=9,
+                bbox=dict(fc="white", ec="none", alpha=.8))
+    ax.set_xlim(-1, n + .7)
+    ax.set_ylim(-1, n + .7)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    ax.set_title("(a) 2D grid on 2 × 2 ranks: rank 3 owns the blue points;\n"
+                 "hatched: its ghost cells; open: boundary value 0", fontsize=9)
+
+    def boxes(a, dims, title):
+        px, py, pz = dims
+        for ix in range(px):
+            for iy in range(py):
+                for iz in range(pz):
+                    x0, y0, z0 = ix / px, iy / py, iz / pz
+                    x1, y1, z1 = x0 + 1 / px, y0 + 1 / py, z0 + 1 / pz
+                    v = [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0),
+                         (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)]
+                    faces = [[v[0], v[1], v[2], v[3]], [v[4], v[5], v[6], v[7]],
+                             [v[0], v[1], v[5], v[4]], [v[2], v[3], v[7], v[6]],
+                             [v[1], v[2], v[6], v[5]], [v[0], v[3], v[7], v[4]]]
+                    one = (ix, iy, iz) == (px - 1, 0, pz - 1)   # one rank's box, shaded
+                    a.add_collection3d(Poly3DCollection(faces, facecolor="C0" if one else "0.92",
+                                                        edgecolor="k", lw=.6, alpha=.9 if one else .25))
+        a.set_title(title, fontsize=9)
+        a.set_box_aspect((1, 1, 1))
+        a.view_init(elev=22, azim=-58)
+        a.set_axis_off()
+
+    for k, (dims, t) in enumerate((((8, 1, 1), "(b) slab, 8 × 1 × 1 ranks"),
+                                   ((4, 2, 1), "(c) pencil, 4 × 2 × 1 ranks"),
+                                   ((2, 2, 2), "(d) block, 2 × 2 × 2 ranks"))):
+        boxes(fig.add_subplot(1, 4, k + 2, projection="3d"), dims, t)
+    save(fig, out, "decomposition")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("csv", nargs="*", help="result CSV files (default results/*.csv)")
     ap.add_argument("--out", default=os.path.join("report", "figures"))
     args = ap.parse_args()
     med = median_runs(load(args.csv))
+    plot_decomposition(args.out)
     for machine in sorted(med.machine.unique()):
         for plot in (plot_e1, plot_strong, plot_weak, plot_comm, plot_hybrid, plot_placement,
                      plot_gpu):
