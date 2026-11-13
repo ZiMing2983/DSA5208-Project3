@@ -1,0 +1,23 @@
+# SSH settings for the NUS HPC clusters used in DSA5208 Project 3.
+# hpc/hpc.sh passes this file with `ssh -F`, so ~/.ssh/config is left untouched.
+#
+# Off-campus, connect to the NUS VPN first: Cisco Secure Client ->
+# "NUS Student - TLS - Auto Select Nearest Location". These hostnames only
+# resolve inside the NUS network.
+
+Host atlas vanda
+    # Your NUSNET ID. Set it with: hpc/hpc.sh setup <NUSNET_ID>
+    User NUSNET_ID
+    # Connection sharing: you log in once and type your password yourself.
+    # Later ssh/rsync calls reuse that connection for up to 4 hours.
+    ControlMaster auto
+    ControlPath ~/.ssh/cm-%C
+    ControlPersist 4h
+    ServerAliveInterval 60
+    ServerAliveCountMax 5
+
+Host atlas
+    HostName atlas8.nus.edu.sg
+
+Host vanda
+    HostName vanda.nus.edu.sg

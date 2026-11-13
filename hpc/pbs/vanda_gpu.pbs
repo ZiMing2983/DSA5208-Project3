@@ -1,0 +1,23 @@
+#!/bin/bash
+# Vanda, the two A40 GPUs of one node: validation V3 on the GPU (plus the CPU tests), then E7
+# (1 and 2 GPUs, CUDA-aware vs host-staged halo, strong and weak scaling).
+# Submit from ~/dsa5208-p3 on Vanda:   qsub hpc/pbs/vanda_gpu.pbs
+# Output: hpc/env/validate_vanda_gpu_<job>.txt, results/gpu_vanda.csv.
+# Cost: 2 GPUs x <= 1 h = <= 2 GPU-h. Vanda allows at most 2 GPUs per job.
+#PBS -N cg_gpu
+#PBS -l select=1:ncpus=72:mpiprocs=8:ompthreads=1:ngpus=2
+#PBS -l walltime=01:00:00
+#PBS -j oe
+
+cd "$PBS_O_WORKDIR"
+source hpc/pbs/env_vanda.sh
+JOB=${PBS_JOBID%%.*}
+mkdir -p hpc/env results
+exec > "hpc/env/gpu_vanda_$JOB.txt" 2>&1
+B="build/vanda-$JOB"
+hostname; nvidia-smi; nvidia-smi topo -m
+ompi_info --parsable --all | grep mpi_built_with_cuda_support:value
+make -j8 BUILD="$B" serial mpi cuda
+NP_MAX=8 GPU_NP=2 MPIRUN="mpirun --bind-to none" bash tests/validate.sh "$B" \
+  | tee "hpc/env/validate_vanda_gpu_$JOB.txt"
+B="$B" CSV=results/gpu_vanda.csv NGPU=2 NODES=1 bash hpc/pbs/gpu_sweep.sh

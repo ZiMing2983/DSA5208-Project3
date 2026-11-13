@@ -1,0 +1,25 @@
+#!/bin/bash
+# Smoke test: CUDA-aware MPI between the 2 A40 GPUs of one Vanda GPU node (1 rank per GPU).
+# Submit from ~/dsa5208-p3 on Vanda:   qsub hpc/pbs/smoke_gpu.pbs
+# Output goes to hpc/env/smoke_gpu.txt.
+#
+# Vanda rules: no queue line, no -P line (personal budget, 1,000 GPU-h per year),
+# at most 2 GPUs per job. place=pack keeps both chunks (and both GPUs) on one node.
+# Cost: at most 2 GPUs x 10 min, about 0.33 GPU-hours.
+#PBS -N smoke_gpu
+#PBS -l select=1:ncpus=72:mpiprocs=2:ompthreads=1:ngpus=2
+#PBS -l walltime=00:10:00
+#PBS -j oe
+
+cd "$PBS_O_WORKDIR"
+mkdir -p hpc/env
+exec > hpc/env/smoke_gpu.txt 2>&1
+module load nvhpc-hpcx-cuda12/26.1
+set -x
+echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+nvidia-smi
+nvidia-smi topo -m
+nvcc --version | tail -2
+ompi_info --parsable --all | grep mpi_built_with_cuda_support:value
+make -C hpc/smoke clean gpu
+mpirun -np 2 hpc/smoke/cuda_aware_check

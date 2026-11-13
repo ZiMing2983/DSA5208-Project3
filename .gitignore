@@ -1,0 +1,14 @@
+# Build output
+build/
+*.o
+*.d
+__pycache__/
+
+# Cluster logs and environment surveys (the brief says: no log files or terminal output)
+hpc/env/
+*.o[0-9]*
+*.e[0-9]*
+hpc/smoke/hello_hybrid
+hpc/smoke/cuda_aware_check
+
+.DS_Store

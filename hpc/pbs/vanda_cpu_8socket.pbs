@@ -1,0 +1,41 @@
+#!/bin/bash
+# Vanda, one 36-core socket on each of eight nodes: the fallback for the >= 256-core job
+# vanda_cpu_4node.pbs, which needs four whole nodes free at once. On Fri 13 Nov that job had waited
+# 19 hours: 74 of the 139 usable CPU nodes each ran one whole-node job, and only one node was
+# completely free. Single sockets free up more often (50 nodes were shared by two jobs).
+# Same experiments as the 4-node job: E3 strong and E4 weak scaling at p = 256 and 288, E5 variants
+# at p = 256, E6 MPI x OpenMP (R ranks x T threads per socket). Each socket still runs 32-36 ranks,
+# so the memory bandwidth per rank matches a full node's; but with twice as many nodes, more of the
+# halo exchange crosses the network, and each node's network link is shared with whatever job has
+# the node's other socket. There is no transport control here (p = 64 does not fit in one socket).
+# Both jobs stay queued: the first to pass its multi-node check takes the lock results/.claim_p288
+# and runs the sweep; the other stops at once when it starts (see cpu_sweep.sh). Delete the other
+# job if it is still queued.
+# Submit from ~/dsa5208-p3 on Vanda:   qsub hpc/pbs/vanda_cpu_8socket.pbs
+# Output: results/cpu_vanda+8node.csv (the analysis takes the node count from the "+8node").
+# Cost: 288 cores x <= 60 min = <= 288 CPU-h (about 40 min expected).
+#PBS -N cg_cpu_8sock
+#PBS -l select=8:ncpus=36:mpiprocs=36:mem=240gb
+#PBS -l place=scatter
+#PBS -l walltime=01:00:00
+#PBS -j oe
+
+cd "$PBS_O_WORKDIR"
+source hpc/pbs/env_vanda.sh
+JOB=${PBS_JOBID%%.*}
+mkdir -p hpc/env results
+exec > "hpc/env/cpu_vanda_8node_$JOB.txt" 2>&1
+sort "$PBS_NODEFILE" | uniq -c
+if [ -d results/.claim_p288 ]; then
+  echo "== the p = 288 sweep already ran or is running (lock results/.claim_p288: $(cat results/.claim_p288/job 2>/dev/null)): nothing to do"
+  exit 0
+fi
+# The cores and NUMA domains PBS gave this job on each node: one socket, or part of each
+echo "== cores of this job on each node"
+for h in $(sort -u "$PBS_NODEFILE"); do
+  echo "$h $(timeout 30 /opt/pbs/bin/pbs_tmrsh "$h" grep -e Cpus_allowed_list -e Mems_allowed_list /proc/self/status | tr -s '\t\n' '  ')"
+done
+B="build/vanda-$JOB"
+make -j16 BUILD="$B" mpi || exit 1
+B="$B" CSV=results/cpu_vanda+8node.csv NODES=8 CORES=36 SOCKETS=1 CONTROL_P=0 \
+  P_STRONG="256 288" P_WEAK="256 288" P_COMM=256 bash hpc/pbs/cpu_sweep.sh

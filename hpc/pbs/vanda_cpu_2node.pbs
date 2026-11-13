@@ -1,0 +1,24 @@
+#!/bin/bash
+# Vanda, two full CPU nodes: E3 strong and E4 weak scaling at p = 128 and 144, E5 variants at
+# p = 128. The ranks of each run are split evenly over the two nodes.
+# Submit from ~/dsa5208-p3 on Vanda:   qsub hpc/pbs/vanda_cpu_2node.pbs
+# Output: results/cpu_vanda+2node.csv. The analysis reads every results/cpu_vanda*.csv as one
+# campaign (speedups use the T1 measured by vanda_cpu_1node.pbs); a separate file per job means
+# jobs running at once on different nodes never append to the same file over NFS.
+# Cost: 144 cores x <= 45 min = <= 108 CPU-h (about 25 min expected, ~60 CPU-h).
+#PBS -N cg_cpu_2node
+#PBS -l select=2:ncpus=72:mpiprocs=72:mem=480gb
+#PBS -l place=scatter
+#PBS -l walltime=00:45:00
+#PBS -j oe
+
+cd "$PBS_O_WORKDIR"
+source hpc/pbs/env_vanda.sh
+JOB=${PBS_JOBID%%.*}
+mkdir -p hpc/env results
+exec > "hpc/env/cpu_vanda_2node_$JOB.txt" 2>&1
+B="build/vanda-$JOB"
+sort "$PBS_NODEFILE" | uniq -c
+make -j16 BUILD="$B" mpi
+B="$B" CSV=results/cpu_vanda+2node.csv NODES=2 CORES=72 WHAT="strong weak comm" \
+  bash hpc/pbs/cpu_sweep.sh

@@ -1,0 +1,1 @@
+**Serial baselines and Amdahl fits.** 2D 8192²: $T_1$ = 207.4 ms, Amdahl fit $f$ = 0.108; 2D 16384²: $T_1$ = 843.0 ms, Amdahl fit $f$ = 0.115; 3D 256³: $T_1$ = 53.3 ms, Amdahl fit $f$ = 0.065; 3D 512³: $T_1$ = 450.7 ms, Amdahl fit $f$ = 0.114.

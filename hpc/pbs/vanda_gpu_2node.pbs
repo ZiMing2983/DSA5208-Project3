@@ -1,0 +1,74 @@
+#!/bin/bash
+# Vanda, one A40 on each of two nodes: E7's inter-node GPU case (the halo crosses 100 GbE).
+# Compare with the 2-GPUs-in-one-node rows from vanda_gpu.pbs.
+# Submit from ~/dsa5208-p3 on Vanda:   qsub hpc/pbs/vanda_gpu_2node.pbs
+# Output: results/gpu_vanda+2node.csv (analysed with results/gpu_vanda.csv as one campaign; its
+# own file so the two GPU jobs never append to one file from two nodes over NFS).
+# Cost: 2 GPUs x <= 45 min = <= 1.5 GPU-h (about 20 min expected).
+#
+# HPC-X Open MPI has no PBS support, so mpirun starts the second node's rank with PBS's pbs_tmrsh,
+# which runs it inside this job on that node: in the job's cgroup, it sees only the GPU (and
+# cores) PBS gave the job there. A rank started over plain ssh would see both GPUs of a node that
+# may be shared with another job, so this job checks the confinement first and stops if it fails.
+#
+# Transport: the module's default (ob1 + TCP BTL, UCX given no network device) takes 5 ms per
+# message between nodes; the first run of this job (1549749) spent its whole 45 minutes in the
+# OSU latency test. This job uses UCX over TCP on the fast Ethernet interface, with UCX's CUDA
+# transports for GPU buffers (see env_vanda.sh, cpu_sweep.sh and net_test.pbs). It checks the
+# host-to-host latency between the nodes first and stops if it is not in the microseconds; if
+# only GPU-buffer (CUDA-aware) messages are slow or fail, it runs the host-staged mode only.
+#PBS -N cg_gpu_2node
+#PBS -l select=2:ncpus=36:mpiprocs=1:ompthreads=1:ngpus=1:mem=240gb
+#PBS -l place=scatter
+#PBS -l walltime=00:45:00
+#PBS -j oe
+
+cd "$PBS_O_WORKDIR"
+source hpc/pbs/env_vanda.sh
+JOB=${PBS_JOBID%%.*}
+mkdir -p hpc/env results
+exec > "hpc/env/gpu_vanda_2node_$JOB.txt" 2>&1
+B="$PWD/build/vanda-$JOB"
+sort "$PBS_NODEFILE" | uniq -c
+make -j4 BUILD="$B" cuda || exit 1
+
+NET=(--mca pml ucx -x UCX_NET_DEVICES="$VANDA_NET_IF" -x UCX_TLS=tcp,sm,self,cuda_copy,cuda_ipc)
+H=(--hostfile "$PBS_NODEFILE" --prefix "$(dirname "$(dirname "$(command -v mpirun)")")"
+   -x PATH -x LD_LIBRARY_PATH -x UCX_WARN_UNUSED_ENV_VARS
+   --mca plm_rsh_agent /opt/pbs/bin/pbs_tmrsh --mca plm_rsh_no_tree_spawn 1 "${NET[@]}"
+   --map-by ppr:1:node --bind-to none)
+echo "== confinement check: each rank must see exactly one GPU, on its own node, and the interface $VANDA_NET_IF up"
+check=$(NET_IF=$VANDA_NET_IF timeout 120 mpirun -np 2 "${H[@]}" -x NET_IF bash -c \
+  'echo "$(hostname -s) gpus=$(nvidia-smi -L | wc -l) if=$(cat /sys/class/net/$NET_IF/operstate 2>/dev/null || echo missing) CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset} $(nvidia-smi --query-gpu=pci.bus_id --format=csv,noheader | tr "\n" " ")$(taskset -cp $$ | sed "s/.*: /cpus /")"')
+echo "$check"
+if [ "$(grep -c ' gpus=1 if=up ' <<<"$check")" != 2 ] || [ "$(cut -d' ' -f1 <<<"$check" | sort -u | wc -l)" != 2 ]; then
+  echo "!! the ranks are not one per node with one GPU each and the interface up: stopping"
+  exit 1
+fi
+
+# 8-byte latency between the nodes, host buffers (H H) or GPU buffers (D D), in microseconds
+lat8() { timeout 120 mpirun -np 2 "${H[@]}" "$HPCX_OSU_CUDA_DIR/osu_latency" -d cuda -m 8:8 -i 2000 -x 200 "$@" |
+           awk '$1 == 8 {print $2}'; }
+MODES="aware staged"
+if [ -x "${HPCX_OSU_CUDA_DIR:-}/osu_latency" ]; then
+  hh=$(lat8 H H)
+  dd=$(lat8 D D)
+  echo "== 8-byte latency between the nodes: host buffers ${hh:-no result} us, GPU buffers ${dd:-no result} us"
+  if [ -z "$hh" ] || ! awk -v u="$hh" 'BEGIN {exit !(u < 500)}'; then
+    echo "!! host-to-host messages between the nodes are slow or fail: stopping"
+    exit 1
+  fi
+  if [ -z "$dd" ] || ! awk -v u="$dd" 'BEGIN {exit !(u < 1000)}'; then
+    echo "!! GPU-buffer messages between the nodes are slow or fail: running the host-staged mode only"
+    MODES=staged
+  fi
+  echo "== network: OSU latency and bandwidth between the nodes, GPU buffers (D D) and host (H H)"
+  for b in osu_latency osu_bw; do
+    for buf in "D D" "H H"; do
+      echo "-- $b $buf"
+      timeout 300 mpirun -np 2 "${H[@]}" "$HPCX_OSU_CUDA_DIR/$b" -d cuda $buf
+    done
+  done
+fi
+B="$B" CSV=results/gpu_vanda+2node.csv NGPU=2 NODES=2 GPU_P=2 LAUNCHER=tm MPI_NET="${NET[*]}" \
+  GPU_MODES="$MODES" bash hpc/pbs/gpu_sweep.sh

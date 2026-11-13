@@ -1,0 +1,38 @@
+#!/bin/bash
+# Smoke test: MPI + OpenMP across 2 whole Vanda CPU nodes (2 ranks per node x 2 threads), with
+# both ways the multi-node jobs can start their remote ranks. Optional: the multi-node experiment
+# jobs run their own check first (cpu_sweep.sh) and stop if it fails.
+# Submit from ~/dsa5208-p3 on Vanda:   qsub hpc/pbs/smoke_cpu.pbs
+# Output goes to hpc/env/smoke_cpu.txt.
+#
+# HPC-X Open MPI has no PBS (tm) support, so mpirun gets the job's nodes from a hostfile and
+# starts its daemons on the other node with an rsh-style agent: PBS's pbs_tmrsh (inside the job's
+# cgroup, the preferred way) or ssh (outside it). An early version of this test used 4-core
+# slices of shared nodes and failed to bind rank 0 outside its slice; whole nodes, as in the
+# experiment jobs, avoid that. place=scatter puts the chunks on different nodes, so the
+# inter-node (100 GbE) path is tested. The exit status is that of the pbs_tmrsh run.
+# Cost: 144 cores x about 2 min, about 5 CPU-hours (walltime limit 10 min).
+#PBS -N smoke_cpu
+#PBS -l select=2:ncpus=72:mpiprocs=2:ompthreads=2:mem=480gb
+#PBS -l place=scatter
+#PBS -l walltime=00:10:00
+#PBS -j oe
+
+cd "$PBS_O_WORKDIR"
+mkdir -p hpc/env
+exec > hpc/env/smoke_cpu.txt 2>&1
+source hpc/pbs/env_vanda.sh
+set -x
+sort "$PBS_NODEFILE" | uniq -c
+lscpu | grep -E "^(Model name|Socket|Core|Thread|CPU\(s\)|NUMA node\(s\)|L3)"
+mpicxx --version | head -2
+make -C hpc/smoke clean cpu
+export OMP_NUM_THREADS=2 OMP_PLACES=cores OMP_PROC_BIND=close
+H=(--hostfile "$PBS_NODEFILE" --prefix "$(dirname "$(dirname "$(command -v mpirun)")")"
+   -x PATH -x LD_LIBRARY_PATH -x OMP_NUM_THREADS -x OMP_PLACES -x OMP_PROC_BIND
+   -x UCX_WARN_UNUSED_ENV_VARS --map-by ppr:2:node:PE=2 --bind-to core --report-bindings)
+mpirun -np 4 "${H[@]}" --mca plm_rsh_agent /opt/pbs/bin/pbs_tmrsh --mca plm_rsh_no_tree_spawn 1 \
+  hpc/smoke/hello_hybrid
+tm=$?
+mpirun -np 4 "${H[@]}" hpc/smoke/hello_hybrid
+exit $tm

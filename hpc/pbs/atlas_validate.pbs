@@ -1,0 +1,19 @@
+#!/bin/bash
+# Atlas: build on a compute node, then run validation tests V1, V2a, V2b and V3 (OpenMP).
+# Submit from ~/dsa5208-p3 on Atlas:   qsub hpc/pbs/atlas_validate.pbs
+# Output: hpc/env/validate_atlas_<job>.txt.   Cost: 12 cores for at most 45 min.
+#PBS -N cg_validate
+#PBS -q parallel
+#PBS -l select=1:ncpus=12:mpiprocs=12:mem=24gb
+#PBS -l walltime=00:45:00
+#PBS -j oe
+
+cd "$PBS_O_WORKDIR"
+source hpc/pbs/env_atlas.sh
+JOB=${PBS_JOBID%%.*}
+mkdir -p hpc/env
+exec > "hpc/env/validate_atlas_$JOB.txt" 2>&1
+B="build/atlas-$JOB"
+hostname; lscpu | grep -E "^(Model name|CPU\(s\)|Socket|NUMA node\(s\))"
+make -j12 BUILD="$B" serial mpi
+NP_MAX=12 MPIRUN="mpirun --bind-to none" bash tests/validate.sh "$B"

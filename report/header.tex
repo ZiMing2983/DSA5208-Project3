@@ -1,0 +1,19 @@
+% LaTeX header for report/report.md (pandoc + XeLaTeX, see report/build.py)
+\usepackage{float}
+\floatplacement{figure}{H}            % figures stay where the text puts them
+\usepackage{etoolbox}
+\AtBeginEnvironment{longtable}{\footnotesize}
+\usepackage{caption}
+\captionsetup{font=small,labelfont=bf,skip=4pt}
+\captionsetup[table]{position=below}
+\setlength{\LTpre}{4pt}
+\setlength{\LTpost}{8pt}
+\usepackage{microtype}
+\setlength{\emergencystretch}{3em}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\footnotesize DSA5208 Project 3: parallel CG for the Poisson equation}
+\fancyhead[R]{\footnotesize Gao Ziming (A0245234L)}
+\fancyfoot[C]{\footnotesize\thepage}
+\renewcommand{\headrulewidth}{0.4pt}

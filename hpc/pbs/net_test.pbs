@@ -1,0 +1,81 @@
+#!/bin/bash
+# Inter-node MPI transport test on two Vanda CPU nodes.
+# Submit from ~/dsa5208-p3 on Vanda:   qsub hpc/pbs/net_test.pbs
+# Output: hpc/env/net_test_<job>.txt (job log only, nothing goes into results/).
+#
+# Why: the 2-node GPU job 1549749 measured 5.0 ms per message between two nodes (15 ms above the
+# 64 KB eager limit) with the module's defaults: Open MPI ob1 + TCP BTL for point-to-point, the UCC
+# and hcoll collective components enabled, and UCX_NET_DEVICES set to an empty string, so UCX (which
+# UCC and hcoll use underneath) can reach no other node. Every collective printed a UCC connect
+# error and fell back, and every message waited for a 10 ms progress tick. This job runs the same
+# checks with the defaults and with candidate fixes, so the experiment jobs can use one that works:
+#   OSU latency and bandwidth between the nodes, an 8-rank Allreduce, and the CG solver's bitwise
+#   A*x check (sendrecv, RMA and PSCW halos) plus a short timing run.
+# A configuration whose latency test fails or times out is skipped after that test.
+# Cost: 2 x 8 cores x <= 40 min, <= 11 core-hours.
+#PBS -N net_test
+#PBS -l select=2:ncpus=8:mpiprocs=4:mem=32gb
+#PBS -l place=scatter
+#PBS -l walltime=00:40:00
+#PBS -j oe
+
+cd "$PBS_O_WORKDIR"
+source hpc/pbs/env_vanda.sh
+JOB=${PBS_JOBID%%.*}
+mkdir -p hpc/env
+exec > "hpc/env/net_test_$JOB.txt" 2>&1
+sort "$PBS_NODEFILE" | uniq -c
+
+# The fast Ethernet interface (the earlier probe found ens6f1, 100 GbE) and the active RDMA device
+IFACE=$(for d in /sys/class/net/*; do
+          [ "$(cat "$d/operstate" 2>/dev/null)" = up ] && [ "$(cat "$d/speed" 2>/dev/null || echo 0)" -ge 10000 ] 2>/dev/null &&
+            basename "$d"
+        done | head -1)
+RDMA=$(ibv_devinfo 2>/dev/null | awk '/hca_id/ {d = $2} /PORT_ACTIVE/ {print d; exit}')
+echo "interface=$IFACE rdma=$RDMA"
+echo "module: UCX_NET_DEVICES='${UCX_NET_DEVICES-unset}' OMPI_MCA_pml=${OMPI_MCA_pml:-} OMPI_MCA_btl=${OMPI_MCA_btl:-}"
+echo "-- UCX transports with the module's UCX_NET_DEVICES:"
+ucx_info -d 2>/dev/null | awk '/Transport:/ {t = $3} /Device:/ {print "   " t " on " $3}' | sort -u
+echo "-- UCX transports with UCX_NET_DEVICES=$IFACE,$RDMA:1:"
+UCX_NET_DEVICES="$IFACE,$RDMA:1" ucx_info -d 2>/dev/null | awk '/Transport:/ {t = $3} /Device:/ {print "   " t " on " $3}' | sort -u
+
+B="$PWD/build/vanda-1548132"   # poisson_mpi built on a Vanda CPU node by job 1548132
+O=$HPCX_OSU_DIR
+H=(--hostfile "$PBS_NODEFILE" --prefix "$(dirname "$(dirname "$(command -v mpirun)")")"
+   -x PATH -x LD_LIBRARY_PATH -x UCX_WARN_UNUSED_ENV_VARS -x OMP_NUM_THREADS=1
+   --mca plm_rsh_agent /opt/pbs/bin/pbs_tmrsh --mca plm_rsh_no_tree_spawn 1 --bind-to none)
+run() {  # run <mpirun args...>: at most TMO seconds (default 90)
+  timeout "${TMO:-90}" mpirun "${H[@]}" "$@"
+  local s=$?
+  (( s == 0 )) || echo "!! exit $s"
+  return $s
+}
+config() {  # config <label> <extra mpirun options...>
+  local label=$1
+  shift
+  echo
+  echo "=========== $label: $*"
+  local t0=$SECONDS
+  echo "-- osu_latency, 1 rank per node"
+  TMO=150 run -np 2 --map-by ppr:1:node "$@" "$O/osu_latency" -m 1:65536 -i 200 -x 20 ||
+    { echo "== $label: latency test failed, skipping the rest"; return; }
+  echo "-- osu_bw, 1 rank per node"
+  run -np 2 --map-by ppr:1:node "$@" "$O/osu_bw" -m 1024:4194304 -i 50 -x 5
+  echo "-- osu_allreduce, 8 ranks (4 per node)"
+  run -np 8 --map-by ppr:4:node "$@" "$O/osu_allreduce" -m 8:16 -i 200 -x 20
+  echo "-- CG: bitwise A*x with each halo kind, then 3D 192^3 for 100 iterations, 8 ranks"
+  for halo in sendrecv rma pscw; do
+    run -np 8 --map-by ppr:4:node "$@" "$B/poisson_mpi" --dim 3 --n 96 --test apply --halo "$halo"
+  done
+  run -np 8 --map-by ppr:4:node "$@" "$B/poisson_mpi" --dim 3 --n 192 --iters 100
+  echo "== $label: $(( SECONDS - t0 )) s"
+}
+
+config "A module defaults"
+config "B UCC and hcoll off" --mca coll ^ucc,hcoll
+config "C UCX given the Ethernet interface" -x UCX_NET_DEVICES="$IFACE"
+config "D TCP progress thread" --mca btl_tcp_progress_thread 1
+config "E pml ucx over TCP" --mca pml ucx -x UCX_NET_DEVICES="$IFACE" -x UCX_TLS=tcp,sm,self
+[ -n "$RDMA" ] && config "F pml ucx over RoCE" --mca pml ucx -x UCX_NET_DEVICES="$RDMA:1"
+echo
+echo "== done"

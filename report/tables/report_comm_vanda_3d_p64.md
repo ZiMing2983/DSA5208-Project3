@@ -1,0 +1,10 @@
+| variant | block | pencil | slab |
+|---|---|---|---|
+| sendrecv | 34.5 (1.29) | 33.7 (1.17) | 41.5 (5.85) |
+| nonblocking | 34.4 (1.15) | 33.8 (1.11) | 41.5 (5.96) |
+| overlap | 35.8 (1.34) | 34.1 (1.17) | 41.9 (6.05) |
+| RMA, fence | 34.4 (1.18) | 33.7 (1.09) | 41.3 (5.98) |
+| RMA, PSCW | 34.4 (1.11) | 33.7 (1.03) | 41.2 (5.81) |
+| nonblocking + fused CG | 34.8 (1.31) | 34.1 (1.25) | 41.9 (6.07) |
+| nonblocking + repro dots | 35.1 (1.15) |  |  |
+| nonblocking + fused CG + repro dots | 36.4 (1.36) |  |  |

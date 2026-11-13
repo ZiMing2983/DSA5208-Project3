@@ -1,0 +1,27 @@
+#!/bin/bash
+# Atlas, one whole node (exclusive): E1 serial scaling and the p = 1 baselines, then the
+# intra-node versions of E3 (strong), E4 (weak), E5 (communication variants) and E6
+# (MPI x OpenMP sweep). Atlas allows at most 96 cores per job, so the >= 256-core figures must
+# come from Vanda; this job gives the single-node curves and a dry run of the sweep scripts.
+# The baselines run here, not in the shared serial queue: other jobs on a shared node take
+# memory bandwidth, which made the serial-queue T1 about 3x too slow.
+# Submit from ~/dsa5208-p3 on Atlas:   qsub hpc/pbs/atlas_node.pbs
+# Output: results/node_atlas_<job>.csv (one file per job), log in hpc/env/.
+#PBS -N cg_node
+#PBS -q parallel
+#PBS -l select=1:ncpus=96:mpiprocs=96:mem=64gb
+#PBS -l place=excl
+#PBS -l walltime=03:00:00
+#PBS -j oe
+
+cd "$PBS_O_WORKDIR"
+source hpc/pbs/env_atlas.sh
+JOB=${PBS_JOBID%%.*}
+mkdir -p hpc/env results
+exec > "hpc/env/node_atlas_$JOB.txt" 2>&1
+B="build/atlas-$JOB"
+hostname; lscpu | grep -E "^(Model name|CPU\(s\)|Socket|NUMA node|L3)"
+make -j16 BUILD="$B" serial mpi
+CORES=$(wc -l < "$PBS_NODEFILE")
+B="$B" CSV="results/node_atlas_$JOB.csv" NODES=1 CORES="$CORES" \
+  WHAT="serial strong weak comm hybrid placement" bash hpc/pbs/cpu_sweep.sh

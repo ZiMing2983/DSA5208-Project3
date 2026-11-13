@@ -1,0 +1,21 @@
+#!/bin/bash
+# Vanda, four full CPU nodes: E3 strong and E4 weak scaling at p = 256 and 288, E5 variants at
+# p = 256, E6 MPI x OpenMP sweep on four nodes. This is the >= 256-core job the rubric needs.
+# Submit from ~/dsa5208-p3 on Vanda:   qsub hpc/pbs/vanda_cpu_4node.pbs
+# Output: results/cpu_vanda+4node.csv (see vanda_cpu_2node.pbs).  Cost: 288 cores x <= 70 min = <= 336 CPU-h
+# (about 35 min expected, ~170 CPU-h). Vanda allows up to 720 cores per job (10 nodes).
+#PBS -N cg_cpu_4node
+#PBS -l select=4:ncpus=72:mpiprocs=72:mem=480gb
+#PBS -l place=scatter
+#PBS -l walltime=01:10:00
+#PBS -j oe
+
+cd "$PBS_O_WORKDIR"
+source hpc/pbs/env_vanda.sh
+JOB=${PBS_JOBID%%.*}
+mkdir -p hpc/env results
+exec > "hpc/env/cpu_vanda_4node_$JOB.txt" 2>&1
+B="build/vanda-$JOB"
+sort "$PBS_NODEFILE" | uniq -c
+make -j16 BUILD="$B" mpi
+B="$B" CSV=results/cpu_vanda+4node.csv NODES=4 CORES=72 bash hpc/pbs/cpu_sweep.sh

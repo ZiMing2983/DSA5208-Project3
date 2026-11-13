@@ -1,0 +1,21 @@
+#!/bin/bash
+# Vanda, one CPU socket (36 cores): build with the NVIDIA HPC SDK on a compute node, then run
+# validation tests V1, V2a, V2b and V3 (OpenMP). The job's exit status is the test result, so
+# the CPU experiment jobs can be submitted with  qsub -W depend=afterok:<this job>  and start
+# only if every test passes.
+# Submit from ~/dsa5208-p3 on Vanda:   qsub hpc/pbs/vanda_validate.pbs
+# Output: hpc/env/validate_vanda_<job>.txt.  Cost: 36 cores x <= 45 min = <= 27 CPU-h (~10 min).
+#PBS -N cg_validate
+#PBS -l select=1:ncpus=36:mpiprocs=36:ompthreads=1:mem=240gb
+#PBS -l walltime=00:45:00
+#PBS -j oe
+
+cd "$PBS_O_WORKDIR"
+source hpc/pbs/env_vanda.sh
+JOB=${PBS_JOBID%%.*}
+mkdir -p hpc/env
+exec > "hpc/env/validate_vanda_$JOB.txt" 2>&1
+B="build/vanda-$JOB"
+hostname; lscpu | grep -E "^(Model name|CPU\(s\)|Socket|NUMA node\(s\))"
+make -j16 BUILD="$B" serial mpi || exit 1
+NP_MAX=12 MPIRUN="mpirun --bind-to none" bash tests/validate.sh "$B"
