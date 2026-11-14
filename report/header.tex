@@ -8,6 +8,11 @@
 \captionsetup[table]{position=below}
 \setlength{\LTpre}{4pt}
 \setlength{\LTpost}{8pt}
+% \needspace{len}: start a new page unless len of space is left (keeps short tables in one piece)
+\makeatletter
+\newcommand{\needspace}[1]{\par\begingroup\dimen@=#1\relax\dimen@ii=\pagegoal
+  \advance\dimen@ii-\pagetotal\ifdim\dimen@>\dimen@ii\ifdim\dimen@ii>\z@\newpage\fi\fi\endgroup}
+\makeatother
 \usepackage{microtype}
 \setlength{\emergencystretch}{3em}
 \usepackage{fancyhdr}

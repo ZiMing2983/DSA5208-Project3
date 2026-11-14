@@ -25,6 +25,11 @@ def md_table(header, rows):
     return "\n".join(lines) + "\n"
 
 
+def sig4(v):
+    """At most four significant figures (1088, 663.7, 0.033), without exponent notation."""
+    return f"{float(f'{v:.4g}'):,.10g}" if v >= 1 else f"{v:.4g}"
+
+
 def e1_table(med, machine):
     f = med[(med.machine == machine) & (med.backend == "serial") & (med.tag == "e1")]
     t = med[(med.machine == machine) & (med.backend == "serial") & (med.tag == "e1-tol")]
@@ -32,11 +37,11 @@ def e1_table(med, machine):
     for r in f.sort_values(["dim", "n"]).itertuples():
         tt = t[(t.dim == r.dim) & (t.nx == r.nx)]
         iters = int(tt.iters.iloc[0]) if len(tt) else ""
-        tsol = f"{tt.t_total.iloc[0]:.3f}" if len(tt) else ""
-        rows.append([f"{r.dim}D", r.nx, f"{r.n:,}", f"{r.nnz:,}", f"{r.t_iter * 1e3:.3f}",
+        tsol = sig4(tt.t_total.iloc[0]) if len(tt) else ""
+        rows.append([f"{r.dim}D", r.nx, f"{r.n:,}", f"{r.nnz:,}", sig4(r.t_iter * 1e3),
                      f"{r.gbs:.1f}", iters, tsol])
     return md_table(["dim", "N", "n", "nnz", "ms / iteration", "GB/s (model)",
-                     "iterations to 1e-8", "time to 1e-8 [s]"], rows) if rows else ""
+                     "iterations to $10^{-8}$", "time to $10^{-8}$ [s]"], rows) if rows else ""
 
 
 def strong_table(med, machine):
@@ -59,7 +64,8 @@ def strong_table(med, machine):
             rows.append([r.p, r.nodes, f"{r.px}x{r.py}x{r.pz}", f"{r.t_iter * 1e3:.3f}", f"{sp:.2f}",
                          f"{sp / r.p:.2f}", "–" if r.p == 1 else f"{e:.3f}",
                          f"{r.halo_per_iter * 1e3:.3f}", f"{r.reduce_per_iter * 1e3:.3f}"])
-        f = amdahl_fit(grp.p, speedups)
+        one = grp[grp.nodes == 1]
+        f = amdahl_fit(one.p, t1 / one.t_iter)  # Amdahl's law fitted to the single-node points
         out += (f"\n**Strong scaling, {size_label(grp.iloc[0])}, {machine}** "
                 f"(T1 = {t1 * 1e3:.3f} ms/iteration, {base}; Amdahl fit: serial fraction "
                 f"f = {f:.3f}, so S(∞) = {1 / f if f > 0 else float('inf'):.0f})\n\n")
@@ -117,14 +123,14 @@ def control_table(med, machine):
         m = ref[(ref.p == r.p) & (ref.dim == r.dim) & (ref.nx == r.nx) & (ref.ny == r.ny) &
                 (ref.nz == r.nz)]
         t0 = float(m.t_iter.iloc[0]) if len(m) else None
-        rows.append([size_label(r._asdict()), r.p, f"{r.nodes}-node job",
+        rows.append([short_label(int(r.dim), int(r.nx), int(r.ny), int(r.nz)), r.p, f"{r.nodes}-node job",
                      f"{t0 * 1e3:.3f}" if t0 else "–", f"{r.t_iter * 1e3:.3f}",
                      f"{r.t_iter / t0:.3f}" if t0 else "–", f"{r.halo_per_iter * 1e3:.3f}",
                      f"{r.reduce_per_iter * 1e3:.3f}"])
     return (f"\n**Transport control, {machine}:** p = 64 on one node with the multi-node transport "
             "(UCX over TCP) versus the single-node job (module default: ob1 + shared memory)\n\n" +
-            md_table(["problem", "p", "run inside", "ob1 ms / iteration", "UCX ms / iteration",
-                      "ratio", "UCX halo ms", "UCX Allreduce ms"], rows))
+            md_table(["problem", "p", "measured in", "default transport: ms", "UCX: ms",
+                      "ratio", "UCX: halo ms", "UCX: Allreduce ms"], rows))
 
 
 def gpu_table(med, machine):
@@ -188,7 +194,7 @@ def report_strong(med, machine):
             if len(m):
                 sp = t1 / float(m.t_iter.iloc[0])
                 row.append(f"{sp:.1f} / {sp / p:.2f}")
-                krow.append("–" if p == 1 else f"{karp_flatt(sp, p):.3f}")
+                krow.append("–" if p == 1 else f"{karp_flatt(sp, p):.3f}".replace("-", "\u2212"))
             else:
                 row.append("")
                 krow.append("")
@@ -202,7 +208,8 @@ def report_strong_baselines(med, machine):
     """One sentence: T1 and the Amdahl fit of every strong-scaling problem."""
     parts = []
     for label, (t1, base, g) in strong_series(med, machine).items():
-        f = amdahl_fit(g.p, t1 / g.t_iter)
+        one = g[g.nodes == 1]
+        f = amdahl_fit(one.p, t1 / one.t_iter)
         parts.append(f"{label}: $T_1$ = {t1 * 1e3:.1f} ms, Amdahl fit $f$ = {f:.3f}")
     return ("**Serial baselines and Amdahl fits.** " + "; ".join(parts) + ".") if parts else ""
 
@@ -255,7 +262,7 @@ def report_gpuweak(med, machine):
         rows.append(row)
     head = ["configuration"]
     for dim, local in groups:
-        head += [f"{dim}D: ms", f"{dim}D: E_w", f"{dim}D: halo ms"]
+        head += [f"{dim}D: ms", f"{dim}D: $E_w$", f"{dim}D: halo ms"]
     return md_table(head, rows)
 
 
@@ -282,13 +289,13 @@ def report_weak(med, machine):
         rows.append(row)
     head = ["p", "nodes"]
     for label in groups:
-        head += [f"{label.split(',')[0]}: ms", f"{label.split(',')[0]}: E_w", f"{label.split(',')[0]}: scaled S"]
+        head += [f"{label.split(',')[0]}: ms", f"{label.split(',')[0]}: $E_w$", f"{label.split(',')[0]}: scaled speedup"]
     return md_table(head, rows)
 
 
 COMM_ROWS = [("sendrecv", "standard", "fast", "sendrecv"), ("nonblocking", "standard", "fast", "nonblocking"),
-             ("overlap", "standard", "fast", "overlap"), ("rma", "standard", "fast", "RMA, fence"),
-             ("pscw", "standard", "fast", "RMA, PSCW"),
+             ("overlap", "standard", "fast", "overlap"), ("rma", "standard", "fast", "rma"),
+             ("pscw", "standard", "fast", "pscw"),
              ("nonblocking", "fused", "fast", "nonblocking + fused CG"),
              ("nonblocking", "standard", "repro", "nonblocking + repro dots"),
              ("nonblocking", "fused", "repro", "nonblocking + fused CG + repro dots")]
@@ -338,7 +345,8 @@ def report_gpu(med, machine):
                   (g.nx == x) & (g.ny == y) & (g.nz == z)]
             return float(m.t_iter.iloc[0]) if len(m) else None
         where = "" if gpus == 1 else (" in 1 node" if nodes == 1 else " on 2 nodes")
-        configs.append((f"{gpus} A40{where}, {'CUDA-aware' if halo == 'aware' else 'host-staged'}", f))
+        mode = "" if gpus == 1 else f", {'CUDA-aware' if halo == 'aware' else 'host-staged'}"
+        configs.append((f"{gpus} A40{where}{mode}", f))
     rows = []
     for name, f in configs:
         vals = [f(*pr) for pr in probs]

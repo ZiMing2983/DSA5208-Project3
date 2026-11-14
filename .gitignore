@@ -12,3 +12,6 @@ hpc/smoke/hello_hybrid
 hpc/smoke/cuda_aware_check
 
 .DS_Store
+
+# Lock directories the multi-node CPU jobs create (hpc/pbs/cpu_sweep.sh), not results
+results/.claim_*
