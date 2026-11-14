@@ -65,7 +65,7 @@ mpirun -np 2 build/poisson_cuda --dim 3 --n 512 --iters 200 --gpu-mpi aware
 | `--decomp block\|pencil\|slab` | process grid from `MPI_Dims_create`: all dimensions, no split in z, or a split in x only |
 | `--halo sendrecv\|nonblocking\|overlap\|rma\|pscw` | blocking `MPI_Sendrecv` per dimension; `Irecv`/`Isend` + `Waitall`; non-blocking with interior points computed during the exchange; one-sided `MPI_Put` with `MPI_Win_fence` (synchronises every rank); one-sided `MPI_Put` with `MPI_Win_post/start/complete/wait` on an MPI group of the neighbours (synchronises only neighbours) |
 | `--cg standard\|fused` | standard CG (two Allreduces per iteration) or Chronopoulos–Gear CG (one 2-value Allreduce) |
-| `--dot fast\|repro` | `repro`: dot products accumulated in double-double (TwoSum), combined over threads in an OpenMP critical section (Vanda's `nvc++` has no OpenMP user-defined reductions; double-double addition gives the same result in any order) and over ranks by a custom `MPI_Op`. The CG solution is then **bit-identical** for any number of ranks and threads. CPU builds only. |
+| `--dot fast\|repro` | `repro`: dot products accumulated in double-double (TwoSum), combined over threads in an OpenMP critical section (Vanda's `nvc++` has no OpenMP user-defined reductions; the order of the double-double additions changes the result only for a sum extremely close to a rounding boundary) and over ranks by a custom `MPI_Op`. The CG solution was then **bit-identical** to the serial one in every configuration tested (2–8 ranks, 2–4 threads). CPU builds only. |
 | `--gpu-mpi aware\|staged` | CUDA build: device buffers passed straight to MPI, or copied through pinned host buffers |
 | `--csv FILE`, `--tag LABEL`, `--machine NAME` | append one result row; label it; name the machine (default `$CG_MACHINE` or the host name) |
 | `--test mms\|apply\|solve` | validation modes (below) |
@@ -98,7 +98,7 @@ t_total,t_comp,t_halo,t_reduce,px,py,pz,warmup,tol,t_iter,tag,dot,t_h2d,t_d2h
 | V2b `--test solve` | A full CG solve on p ranks must take the same number of iterations as serial and satisfy ‖x_p − x_s‖/‖x_s‖ ≤ 1e-10. Locally the difference is about 1e-15, coming only from the order of the reduction. With `--dot repro` the difference must be exactly 0: the solve is bit-identical to serial for p = 2, 3, 5, 8 and with OpenMP threads. |
 | V3 | V1, V2a and V2b again with 2 and 4 OpenMP threads. The CUDA build runs them on the GPU when one is visible. |
 
-These are four tests. The script runs each one over a sweep of configurations: rank counts, halo variants, decompositions, 2D and 3D. All configurations pass: 141 on the Mac (p ≤ 8). The cluster jobs run the same script with p ≤ 12. The CUDA runs of V3 need Vanda's GPUs. The report presents the four tests with their sweeps rather than a count of configurations; Lecture 12 asks why anyone would need 100+ tests.
+These are four tests. The script runs each one over a sweep of configurations: rank counts, halo variants, decompositions, 2D and 3D. All configurations pass: 141 on the Mac (p ≤ 8). The cluster jobs run the same script with p ≤ 12. The CUDA runs of V3 need Vanda's GPUs.
 
 ## Experiments (cluster job scripts)
 
@@ -107,12 +107,12 @@ These are four tests. The script runs each one over a sweep of configurations: r
 | `hpc/pbs/atlas_validate.pbs` | Atlas, 12 cores | build + validation |
 | `hpc/pbs/atlas_node.pbs` | Atlas, 1 whole node | E1 + p = 1 baselines, then E3–E6 within one node (Atlas allows ≤ 96 cores per job) |
 | `hpc/pbs/vanda_cpu_1node.pbs` | Vanda, 1 whole node | E1 + T₁ baselines, then E3–E6 on one node |
-| `hpc/pbs/vanda_cpu_{2,4}node.pbs` | Vanda, 144/288 cores | E3 strong, E4 weak, E5 communication variants (+ E6 on 4 nodes) |
+| `hpc/pbs/vanda_cpu_{2,4}node.pbs` | Vanda, 144/288 cores | E3 strong, E4 weak, E5 communication variants; the 4-node script also has E6, which its time limit cut off |
 | `hpc/pbs/vanda_gpu.pbs`, `vanda_gpu_2node.pbs` | Vanda, 2 × A40 | GPU validation + E7 |
 
 The loops themselves live in `hpc/pbs/{serial,cpu,gpu}_sweep.sh`. Each job script lists its core-hour or GPU-hour cost in its header.
 
-Two measurement rules come from the first Atlas runs:
+Three measurement rules come from the first Atlas runs:
 - **Baselines run in a job that has the whole node.** On a node shared with other jobs (Atlas's `serial` queue), their memory traffic made the memory-bound serial run about 3× slower, which would inflate every speedup.
 - **Ranks are spread out.** On one node, pure-MPI ranks are spread over the NUMA domains. On several nodes, half of each node's ranks go to each socket. Packing ranks onto the first cores puts them all on one NUMA domain's memory channels: on Atlas, 3D 512³ with 4 ranks took 329 ms per iteration packed and 119 ms spread. The single-node jobs also run a `placement` experiment that compares `--map-by core|socket|numa|l3cache`.
 - **The serial baseline is pinned to core 0**, as `mpirun -np 1` pins the MPI baseline. Unpinned, the OS sometimes moved it away from its memory, and those runs were 30–40% slower.
