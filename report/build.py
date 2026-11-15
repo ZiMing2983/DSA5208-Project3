@@ -103,14 +103,26 @@ def keep_tables_whole(text):
 
 
 def keep_leadins(text):
-    """A one-line lead-in ("**Limitations.**") never ends a page without its list."""
+    """A one-line lead-in ("**Limitations.**") never ends a page without the list or code block
+    after it, and a heading right above the lead-in moves with it."""
     lines, out = text.split("\n"), []
     for i, line in enumerate(lines):
-        nxt = next((l for l in lines[i + 1:] if l.strip()), "")
-        if (0 < len(line) <= 140 and not line.startswith(("-", "|", "#", "!", "\\", "<", " ")) and
+        k = next((j for j in range(i + 1, len(lines)) if lines[j].strip()), None)
+        nxt = lines[k] if k is not None else ""
+        if (0 < len(line) <= 140 and not line.startswith(("-", "|", "#", "!", "\\", "<", " ", "`")) and
                 (i == 0 or not lines[i - 1].strip()) and i + 1 < len(lines) and not lines[i + 1].strip()
-                and re.match(r"(- |\d+\. )", nxt)):
-            out += ["\\needspace{4\\baselineskip}", ""]
+                and (re.match(r"(- |\d+\. )", nxt) or nxt.startswith("```"))):
+            need = 4
+            if nxt.startswith("```"):  # the whole code block, which pandoc would otherwise split
+                end = next((j for j in range(k + 1, len(lines)) if lines[j].startswith("```")), k)
+                need = end - k + 3
+            at = len(out)
+            while at and not out[at - 1].strip():
+                at -= 1
+            if at and out[at - 1].startswith("#"):  # the heading above goes with its lead-in
+                out[at - 1:at - 1] = [f"\\needspace{{{need + 2}\\baselineskip}}", ""]
+            else:
+                out += [f"\\needspace{{{need}\\baselineskip}}", ""]
         out.append(line)
     return "\n".join(out)
 

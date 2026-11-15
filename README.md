@@ -130,4 +130,4 @@ Both scripts take the median over repeated runs. For T₁, speedups use the seri
 
 ## AI usage
 
-An AI assistant was used as a coding assistant (the solver, the validation, job and analysis scripts, and diagnosing problems on the clusters) and as a report-drafting assistant.
+An AI assistant was used for idea generation and project planning, as a coding assistant (the solver, the validation, job and analysis scripts, and diagnosing problems on the clusters), and as a report-drafting assistant.
