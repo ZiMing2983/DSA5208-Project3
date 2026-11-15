@@ -10,7 +10,7 @@ The code solves −∇²u = f on the unit square and the unit cube, with u = 0 o
 | MPI + OpenMP | `build/poisson_mpi` | Cartesian domain decomposition, halo exchange, `MPI_Allreduce`; OpenMP threads inside each rank |
 | MPI + CUDA | `build/poisson_cuda` | one rank per GPU, all vectors on the device, CUDA-aware or host-staged halo exchange |
 
-The design, experiments and report outline are in [PROJECT_PLAN.md](PROJECT_PLAN.md). The cluster setup and job submission are covered in [hpc/README.md](hpc/README.md).
+The report is [report/report.pdf](report/report.pdf). The cluster setup and job submission are covered in [hpc/README.md](hpc/README.md).
 
 ## Layout
 
@@ -47,13 +47,16 @@ Notes on the build:
 ## Running
 
 ```bash
+export OMP_NUM_THREADS=1                                          # pure MPI: one thread per rank
 build/poisson_serial --dim 3 --n 128 --iters 100                  # fixed-iteration timing run
 build/poisson_serial --dim 2 --n 1023 --tol 1e-8                  # time to solution
 mpirun -np 8 build/poisson_mpi --dim 3 --n 256 --iters 200 --halo overlap --csv results/x.csv
 mpirun -np 8 build/poisson_mpi --dim 3 --nlocal 128 --iters 100   # weak scaling: 128^3 per rank
-OMP_NUM_THREADS=4 mpirun -np 2 build/poisson_mpi --dim 3 --n 256 --iters 100
+OMP_NUM_THREADS=4 mpirun -np 2 build/poisson_mpi --dim 3 --n 256 --iters 100   # hybrid: 2 ranks x 4 threads
 mpirun -np 2 build/poisson_cuda --dim 3 --n 512 --iters 200 --gpu-mpi aware
 ```
+
+Set `OMP_NUM_THREADS=1` for pure-MPI runs. If it is unset, each rank starts as many OpenMP threads as it has cores available, which is all of them under an MPI that does not bind ranks (such as MPICH on the Mac). The job scripts and `tests/validate.sh` set it themselves.
 
 | Option | Meaning |
 |---|---|
@@ -65,7 +68,7 @@ mpirun -np 2 build/poisson_cuda --dim 3 --n 512 --iters 200 --gpu-mpi aware
 | `--decomp block\|pencil\|slab` | process grid from `MPI_Dims_create`: all dimensions, no split in z, or a split in x only |
 | `--halo sendrecv\|nonblocking\|overlap\|rma\|pscw` | blocking `MPI_Sendrecv` per dimension; `Irecv`/`Isend` + `Waitall`; non-blocking with interior points computed during the exchange; one-sided `MPI_Put` with `MPI_Win_fence` (synchronises every rank); one-sided `MPI_Put` with `MPI_Win_post/start/complete/wait` on an MPI group of the neighbours (synchronises only neighbours) |
 | `--cg standard\|fused` | standard CG (two Allreduces per iteration) or Chronopoulos–Gear CG (one 2-value Allreduce) |
-| `--dot fast\|repro` | `repro`: dot products accumulated in double-double (TwoSum), combined over threads in an OpenMP critical section (Vanda's `nvc++` has no OpenMP user-defined reductions; the order of the double-double additions changes the result only for a sum extremely close to a rounding boundary) and over ranks by a custom `MPI_Op`. The CG solution was then **bit-identical** to the serial one in every configuration tested (2–8 ranks, 2–4 threads). CPU builds only. |
+| `--dot fast\|repro` | `repro`: dot products accumulated in double-double (TwoSum), combined over threads in an OpenMP critical section (Vanda's `nvc++` has no OpenMP user-defined reductions; the order of the double-double additions changes the result only for a sum extremely close to a rounding boundary) and over ranks by a custom `MPI_Op`. The CG solution was then **bit-identical** to the serial one in every configuration tested (2–8 ranks and 2–4 threads in the validation runs; 144 and 288 ranks in the multi-node jobs). CPU builds only. |
 | `--gpu-mpi aware\|staged` | CUDA build: device buffers passed straight to MPI, or copied through pinned host buffers |
 | `--csv FILE`, `--tag LABEL`, `--machine NAME` | append one result row; label it; name the machine (default `$CG_MACHINE` or the host name) |
 | `--test mms\|apply\|solve` | validation modes (below) |
@@ -89,13 +92,13 @@ t_total,t_comp,t_halo,t_reduce,px,py,pz,warmup,tol,t_iter,tag,dot,t_h2d,t_d2h
 
 ## Validation
 
-`make test` (or `tests/validate.sh BUILD`) runs the tests of PROJECT_PLAN.md §5:
+`make test` (or `tests/validate.sh BUILD`) runs the four validation tests described in Section 4 of the report:
 
 | Test | What it checks |
 |---|---|
 | V1 `--test mms` | The manufactured solution u = ∏ t(1−t)eᵗ (not ∏ sin πx, which is a discrete eigenvector, so CG would converge in one step). It is solved for N + 1 = 16, 32, …, and the error must fall as h², an observed order of 2 ± 0.1. |
 | V2a `--test apply` | One application of A to a non-smooth vector on p ranks must be **bit-identical** to the serial result. It is run for p = 1…8 on grids of 23×17×13 and 37×29, which are uneven and include prime extents, for every halo variant and decomposition. |
-| V2b `--test solve` | A full CG solve on p ranks must take the same number of iterations as serial and satisfy ‖x_p − x_s‖/‖x_s‖ ≤ 1e-10. Locally the difference is about 1e-15, coming only from the order of the reduction. With `--dot repro` the difference must be exactly 0: the solve is bit-identical to serial for p = 2, 3, 5, 8 and with OpenMP threads. |
+| V2b `--test solve` | A full CG solve on p ranks must take the same number of iterations as serial, to within 1, and satisfy ‖x_p − x_s‖/‖x_s‖ ≤ 1e-10. Locally the difference is about 1e-15, coming only from the order of the reduction. With `--dot repro` the difference must be exactly 0: the solve is bit-identical to serial for p = 2, 3, 5, 8 and with OpenMP threads. |
 | V3 | V1, V2a and V2b again with 2 and 4 OpenMP threads. The CUDA build runs them on the GPU when one is visible. |
 
 These are four tests. The script runs each one over a sweep of configurations: rank counts, halo variants, decompositions, 2D and 3D. All configurations pass: 141 on the Mac (p ≤ 8). The cluster jobs run the same script with p ≤ 12. The CUDA runs of V3 need Vanda's GPUs.

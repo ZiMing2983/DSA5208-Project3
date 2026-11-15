@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# E1 serial scaling (PROJECT_PLAN.md §6) on one core, plus the p = 1 MPI baselines of the
+# E1 serial scaling (report Section 2) on one core, plus the p = 1 MPI baselines of the
 # strong-scaling problems. Called by cpu_sweep.sh (WHAT=serial) inside a job that has the
 # whole node to itself, so the timings are not shared with other jobs' memory traffic. Needs:
 #   B    build directory containing poisson_serial (and poisson_mpi for the baselines)

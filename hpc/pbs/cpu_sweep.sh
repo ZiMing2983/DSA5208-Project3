@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CPU experiments E3-E6 (PROJECT_PLAN.md §6) for one node count. Called by the *_cpu_*.pbs
+# CPU experiments E3-E6 (report Sections 6 and 7.1) for one node count. Called by the *_cpu_*.pbs
 # scripts with:
 #   B       build directory containing poisson_mpi
 #   CSV     output file (one row per run)

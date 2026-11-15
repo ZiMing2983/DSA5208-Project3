@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Validation tests of PROJECT_PLAN.md §5, run against the binaries in BUILD (default build/):
+# Validation tests (report Section 4), run against the binaries in BUILD (default build/):
 #   V1   manufactured solution: error ~ h^2 (serial, 2D and 3D)
 #   V2a  one A*x, bitwise identical to serial for p = 1..NP_MAX, odd p, uneven splits,
 #        every decomposition and halo variant
-#   V2b  full CG solve: same iterations as serial, ||x_p - x_s|| / ||x_s|| <= 1e-10;
+#   V2b  full CG solve: iterations within 1 of serial, ||x_p - x_s|| / ||x_s|| <= 1e-10;
 #        with --dot repro (double-double reductions) the solution must be bit-identical
 #   V3   OpenMP threads reproduce V1 and V2b; the CUDA build (if built and a GPU is visible)
 #        reproduces V1, V2a and V2b

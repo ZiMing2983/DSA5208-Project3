@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# GPU experiment E7 (PROJECT_PLAN.md §6) with the MPI+CUDA build. Called by vanda_gpu*.pbs:
+# GPU experiment E7 (report Section 7.2) with the MPI+CUDA build. Called by vanda_gpu*.pbs:
 #   B     build directory containing poisson_cuda
 #   CSV   output file
 #   NGPU  GPUs in the job (1 or 2);  NODES  nodes in the job (default 1)

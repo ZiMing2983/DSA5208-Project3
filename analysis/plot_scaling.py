@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Report figures from the result CSVs (PROJECT_PLAN.md §6, §10).
+"""Report figures from the result CSVs (experiments E1-E7 of the report).
 
     python3 analysis/plot_scaling.py [CSV ...] [--out report/figures]
 

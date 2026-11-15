@@ -6,7 +6,7 @@ control and the GPU runs.
     python3 analysis/make_tables.py [CSV ...] [--out report/tables]
 
 Speedups use the serial build on the same machine as T1 (MPI p = 1 if no serial run exists),
-following PROJECT_PLAN.md §4.4. Medians over repeated runs.
+as Section 3.6 of the report describes. Medians over repeated runs.
 """
 import argparse
 import os
